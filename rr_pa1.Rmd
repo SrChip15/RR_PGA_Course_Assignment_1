@@ -1,0 +1,187 @@
+
+
+---
+title: 'Reproducible Research - Project 1: Activity Montioring Data Analysis'
+author: "SrChip15"
+date: "June 10, 2016"
+output: html_document
+---
+
+
+```{r setoptions, echo=TRUE}
+```
+
+
+Let's download the dataset from the given URL and load the dataset into our WD
+and after that remove the temp file that we no longer need
+```{r}
+URL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+temp <- tempfile()
+download.file(URL, temp)
+org.df <- read.csv(unz(temp, "activity.csv"), stringsAsFactors = FALSE)
+unlink(temp)
+```
+
+
+Now that the dataset has been loaded, let's get some statistics on the dataset
+to get an overview of the dataset
+```{r}
+dim(org.df)
+summary(org.df)
+str(org.df)
+```
+
+Right off the bat, we observe that the "date" variable is interpreted as a
+character datatype. Let's go ahead and convert it into the appropriate date format
+```{r}
+org.df$date <- as.Date(org.df$date)
+str(org.df)
+```
+The "str" call now confirms that the said variable is in the appropriate date format
+
+
+Now, let's aggregate the dataset to get the total number of steps taken in a day
+```{r}
+agg_date.df <- setNames(aggregate(org.df$steps ~ org.df$date, data = org.df, FUN = sum), c("Date","Steps"))
+head(agg_date.df)
+```
+As we can observe from the "head" call, now we ONLY see UNIQUE dates, assuring 
+that the steps have been aggregated over unique dates
+
+
+For the first part of the assignment, let's graph a histogram of the total number
+of steps taken each day and also report the mean and median of the total number
+of steps taken per day
+```{r}
+# load library and make a histogram (gg)
+library(ggplot2)
+ggplot(agg_date.df, aes(Steps)) +
+        geom_histogram(binwidth = 2000, fill = "blue") +
+        labs(title = "Histogram of Daily Steps", x = "Steps per Day", y = "Frequency")
+
+# mean and median
+mean_org <- mean(agg_date.df$Steps)
+median_org <- median(agg_date.df$Steps)
+print(mean_org)
+print(median_org)
+```
+The mean and the median differ by 1.19 steps, not significantly different from each other
+implying that the datapoints are failry equally distributed
+
+
+Moving on to the next question in the assignment - Average Daily Activity Pattern.
+For this purpose, we would be averaging the total number of steps taken in a day
+over the 5-minute intervals for all the days present in the dataset.
+
+We would report the interval with the maximum number of steps
+```{r}
+# averaging the number of steps over 5-minute intervals 
+agg_int.df <- setNames(aggregate(org.df$steps ~ org.df$interval, data = org.df, FUN = mean), c("Interval","Steps"))
+
+# report the interval with the highest mean number of steps 
+max_int_avg <- agg_int.df[which.max(agg_int.df$Steps),]
+print(max_int_avg)
+```
+It is clear now that during the months of October and November of 2012, 835th 5-minute
+interval is the time of the day that has the highest average number of steps in a day
+
+
+Let's visualize the same by way of a time series plot
+```{r}
+ggplot(agg_int.df, aes(x = Interval, y = Steps)) +
+        geom_line(color = "blue") +
+        labs(title = "Time Series of Daily Average Steps over Intervals", x = "Intervals", y = "Number of Steps")
+```
+
+
+Missing values! Like any real dataset, the current dataset is also riddled with 
+missing values. So, let's analyze the number of missing value cases and also the 
+corresponding variables
+```{r}
+missing_val <- sapply(org.df, function(x) sum(is.na(x)))
+print(missing_val)
+```
+Approximately, missing value cases constitute 13.11% of the dataset and this is
+entirely from the "steps" variable in the dataset
+
+This is a fairly significant proportion of the dataset. So, a simple mean value
+imputation is enforced in the dataset
+```{r}
+# copy original dataset
+imp.df <- org.df
+
+# impute missing values with the mean
+imp.df$steps[is.na(imp.df$steps)] <- mean(imp.df$steps, na.rm = TRUE)
+str(imp.df)
+```
+
+
+Now let's again aggregate the number of steps over unique dates and report the 
+mean and median of the same
+
+```{r}
+# aggregate the imputed data set to get the total number of steps taken daily
+agg_date_imp.df <- setNames(aggregate(imp.df$steps ~ imp.df$date, data = imp.df, FUN = sum), c("Date","Steps"))
+
+# mean and median of imputed dataset
+mean_imp <- mean(agg_date_imp.df$Steps)
+median_imp <- median(agg_date_imp.df$Steps)
+print(mean_imp)
+print(median_imp)
+```
+Now the mean and the median have the same value. Without imputation, the mean and 
+the median differed by 1.19 steps. So, in this case, since the original data (with 
+missing values) is equally distributed, there is none to negligibel impact on the
+dataset. Factually, we are able to see that the mean and median are now equal
+
+
+Visualizing the total number of steps after imputing for missing values
+```{r}
+# histogram of total number of steps taken each day (with imputed values)
+ggplot(agg_date_imp.df, aes(Steps)) +
+        geom_histogram(binwidth = 2000, fill = "blue") +
+        labs(title = "Histogram of Daily Steps (w/ imputed val)", x = "Steps per Day", y = "Frequency")
+```
+
+
+Before we wrap up, let's analyze the dataset for activity distributions from a
+weekday Vs. weekend standpoint. As a result, we would need to engineer a new feature, 
+which I would title as "DayType". Basically, this would be a 2-level factor variable, 
+namely - Weekday or Weekend.
+```{r}
+# add DayType (weekend/weekday) feature into the imputed dataset
+weekend <- c("Saturday","Sunday")
+imp.df$DayType <- as.factor(ifelse(weekdays(imp.df$date) %in% weekend, "Weekend", "Weekday"))
+head(imp.df)
+str(imp.df)
+```
+
+
+Okay, now let's average the number of steps taken in the imputed dataset over 
+intervals for all the days
+```{r}
+# aggregate data points over intervals
+agg_int_imp.df <- setNames(aggregate(imp.df$steps ~ imp.df$interval + imp.df$DayType, data = imp.df, FUN = mean), c("Interval","DayType", "Steps"))
+head(agg_int_imp.df)
+tail(agg_int_imp.df)
+```
+
+
+Finally, let's visualize the mean number of steps over different intervals in a 
+weekday Vs. weekend perspective to observe a pattern (if any)
+```{r}
+# time series panel plot for Interval Mean Steps - Weekday Vs. Weekend
+ggplot(agg_int_imp.df, aes(x = Interval, y = Steps, color = DayType)) +
+        geom_line() +
+        facet_wrap(~DayType, ncol = 1, nrow = 2) +
+        labs(title = "Interval Mean Steps - Weekday Vs. Weekend", x = "Interval", y = "Mean Steps")
+```
+
+
+From the sharp peaks in the weekdays, we can conclude that during the weekdays
+there are time periods when there is peak activity and the rest of the day is fairly
+low activity. The peak activity falls between 1pm and 3pm, presumably users heading 
+out for lunch or taking a break from work. While, over the weekends, it looks like
+the users are consistently active throughout the day and there are no drastic peaks
+that signal peak activity times.
+
